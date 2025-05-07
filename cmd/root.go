@@ -96,9 +96,9 @@ func AddCommand(cmd *cobra.Command) {
 // Setup initializes flags and commands.
 func Setup() {
 	// Add persistent flags available to all commands
-	cfg.app.rootCmd.PersistentFlags().StringVarP(&cfg.app.logLevel, "log-level", "l", "info",
+	cfg.app.rootCmd.PersistentFlags().StringVarP(&cfg.app.logLevel, "log-level", "", "info",
 		"Set logging level (debug, info, warn, error)")
-	cfg.app.rootCmd.PersistentFlags().DurationVarP(&cfg.app.timeout, "timeout", "t", defaultCommandTimeout,
+	cfg.app.rootCmd.PersistentFlags().DurationVarP(&cfg.app.timeout, "timeout", "", defaultCommandTimeout,
 		"Global command timeout")
 }
 

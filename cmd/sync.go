@@ -9,7 +9,7 @@ import (
 
 // NewSyncCmd creates and returns the sync command.
 func NewSyncCmd() *cobra.Command {
-	var modulesDir string
+	var workDir, targetDir, modulesDir string
 
 	// syncCmd represents the sync command.
 	syncCmd := &cobra.Command{
@@ -24,13 +24,13 @@ files in the current directory.`,
 
 			logger := GetLogger()
 
-			processor, err := sync.NewVariableProcessor(logger)
+			processor, err := sync.NewVariableProcessor(logger, workDir, targetDir, modulesDir)
 			if err != nil {
 				logger.Error("Failed to initialize variable processor", "error", err)
 				return err
 			}
 
-			syncErr := processor.ProcessModules(ctx, modulesDir)
+			syncErr := processor.ProcessModules(ctx)
 			if syncErr != nil {
 				logger.Error("Variable synchronization failed", "error", syncErr)
 				return syncErr
@@ -41,8 +41,12 @@ files in the current directory.`,
 		},
 	}
 
-	syncCmd.Flags().StringVarP(&modulesDir, "modules-dir", "d", ".terraform/modules",
-		"Directory containing Terraform modules")
+	syncCmd.Flags().StringVarP(&workDir, "work-dir", "", ".",
+		"Directory to work in")
+	syncCmd.Flags().StringVarP(&targetDir, "target-dir", "", ".",
+		"Directory to output synced files to")
+	syncCmd.Flags().StringVarP(&modulesDir, "modules-dir", "", ".terraform/modules",
+		"Directory containing Terraform modules, will be prepended by work-dir")
 
 	return syncCmd
 }

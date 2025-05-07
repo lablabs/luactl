@@ -21,8 +21,10 @@ import (
 
 // Configuration constants.
 const (
-	addonPrefix               = "addon"
-	sourceVariableFileName    = "variables.tf"
+	modulePrefix = "addon"
+
+	sourceVariableFileName = "variables.tf"
+
 	targetAddonFilePattern    = "%s.tf"
 	targetVariableFilePattern = "variables-%s.tf"
 	targetFileMode            = 0600
@@ -30,12 +32,15 @@ const (
 
 // VariableProcessor handles the parsing, formatting, and writing of variables.
 type VariableProcessor struct {
-	tmpl   *template.Template
-	logger *slog.Logger
+	tmpl       *template.Template
+	logger     *slog.Logger
+	workDir    string
+	targetDir  string
+	modulesDir string
 }
 
 // NewVariableProcessor creates a new processor.
-func NewVariableProcessor(logger *slog.Logger) (*VariableProcessor, error) {
+func NewVariableProcessor(logger *slog.Logger, workDir, targetDir, modulesDir string) (*VariableProcessor, error) {
 	tmpl, err := template.New("variables").Parse(
 		`# IMPORTANT: This file is synced with the "terraform-aws-eks-universal-addon" module. Any changes to this file might be overwritten upon the next release of that module.
 {{ printf "%s" .Variables }}`)
@@ -45,23 +50,26 @@ func NewVariableProcessor(logger *slog.Logger) (*VariableProcessor, error) {
 	}
 
 	return &VariableProcessor{
-		tmpl:   tmpl,
-		logger: logger,
+		tmpl:       tmpl,
+		logger:     logger,
+		workDir:    workDir,
+		targetDir:  targetDir,
+		modulesDir: filepath.Join(workDir, modulesDir),
 	}, nil
 }
 
 // ProcessModules finds and processes all relevant addon modules in the specified directory.
-func (vp *VariableProcessor) ProcessModules(ctx context.Context, modulesDir string) error {
-	vp.logger.InfoContext(ctx, "Starting variable sync from modules", "modulesDir", modulesDir)
+func (vp *VariableProcessor) ProcessModules(ctx context.Context) error {
+	vp.logger.InfoContext(ctx, "Starting variable sync from modules", "modulesDir", vp.modulesDir)
 
-	entries, err := os.ReadDir(modulesDir)
+	entries, err := os.ReadDir(vp.modulesDir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			vp.logger.WarnContext(ctx, "Modules directory not found, skipping sync", "modulesDir", modulesDir)
+			vp.logger.WarnContext(ctx, "Modules directory not found, skipping sync", "modulesDir", vp.modulesDir)
 			return nil
 		}
-		vp.logger.ErrorContext(ctx, "Failed to read directory", "path", modulesDir, "error", err)
-		return fmt.Errorf("failed to read directory %q: %w", modulesDir, err)
+		vp.logger.ErrorContext(ctx, "Failed to read directory", "path", vp.modulesDir, "error", err)
+		return fmt.Errorf("failed to read directory %q: %w", vp.modulesDir, err)
 	}
 
 	var (
@@ -83,14 +91,14 @@ func (vp *VariableProcessor) ProcessModules(ctx context.Context, modulesDir stri
 		}
 
 		moduleName := entry.Name()
-		if !strings.HasPrefix(moduleName, addonPrefix) || strings.Contains(moduleName, ".") {
+		if !strings.HasPrefix(moduleName, modulePrefix) || strings.Contains(moduleName, ".") {
 			vp.logger.DebugContext(ctx, "Skipping entry", "module", moduleName, "reason", "does not match criteria")
 			skippedCount++
 			continue
 		}
 
 		vp.logger.InfoContext(ctx, "Processing module", "module", moduleName)
-		procErr := vp.processSingleModule(ctx, modulesDir, moduleName)
+		procErr := vp.processModule(ctx, moduleName)
 		if procErr != nil {
 			errorCount++
 			vp.logger.ErrorContext(ctx, "Failed to process module", "module", moduleName, "error", procErr)
@@ -111,8 +119,8 @@ func (vp *VariableProcessor) ProcessModules(ctx context.Context, modulesDir stri
 	return nil
 }
 
-func (vp *VariableProcessor) processSingleModule(ctx context.Context, modulesBaseDir, moduleName string) error {
-	sourcePath := filepath.Join(modulesBaseDir, moduleName, "modules", moduleName, sourceVariableFileName)
+func (vp *VariableProcessor) processModule(ctx context.Context, moduleName string) error {
+	sourcePath := filepath.Join(vp.modulesDir, moduleName, "modules", moduleName, sourceVariableFileName)
 
 	vp.logger.DebugContext(ctx, "Processing source file", "sourcePath", sourcePath)
 
@@ -166,19 +174,19 @@ func (vp *VariableProcessor) extractVariables(ctx context.Context, filePath stri
 }
 
 func (vp *VariableProcessor) syncAddonDefaults(ctx context.Context, moduleName string, varFile *hclwrite.File) error {
-	filePath := fmt.Sprintf(targetAddonFilePattern, moduleName)
+	sourcePath := filepath.Join(vp.workDir, fmt.Sprintf(targetAddonFilePattern, moduleName))
 
-	src, err := os.ReadFile(filePath)
+	src, err := os.ReadFile(sourcePath)
 	if err != nil {
-		vp.logger.ErrorContext(ctx, "Failed to read file", "path", filePath, "error", err)
-		return fmt.Errorf("failed to read file %q: %w", filePath, err)
+		vp.logger.ErrorContext(ctx, "Failed to read file", "path", sourcePath, "error", err)
+		return fmt.Errorf("failed to read file %q: %w", sourcePath, err)
 	}
 
-	file, diags := hclwrite.ParseConfig(src, filepath.Base(filePath), hcl.Pos{Line: 1, Column: 1})
+	file, diags := hclwrite.ParseConfig(src, filepath.Base(sourcePath), hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
 		diagErr := errors.New(diags.Error())
-		vp.logger.ErrorContext(ctx, "Failed to parse HCL", "path", filePath, "error", diagErr)
-		return fmt.Errorf("failed to parse HCL file %q: %w", filePath, diagErr)
+		vp.logger.ErrorContext(ctx, "Failed to parse HCL", "path", sourcePath, "error", diagErr)
+		return fmt.Errorf("failed to parse HCL file %q: %w", sourcePath, diagErr)
 	}
 
 	defaults := make(map[string]hclwrite.Tokens)
@@ -252,21 +260,19 @@ func (vp *VariableProcessor) syncAddonDefaults(ctx context.Context, moduleName s
 		}
 	}
 
-	writeErr := os.WriteFile(filePath, file.Bytes(), targetFileMode)
+	targetPath := filepath.Join(vp.targetDir, fmt.Sprintf(targetAddonFilePattern, moduleName))
+	writeErr := os.WriteFile(targetPath, file.Bytes(), targetFileMode)
 	if writeErr != nil {
-		vp.logger.ErrorContext(ctx, "Failed to write file", "path", filePath, "error", writeErr)
-		return fmt.Errorf("failed to write file %q: %w", filePath, writeErr)
+		vp.logger.ErrorContext(ctx, "Failed to write file", "path", targetPath, "error", writeErr)
+		return fmt.Errorf("failed to write file %q: %w", targetPath, writeErr)
 	}
 
-	vp.logger.InfoContext(ctx, "Successfully wrote addon defaults", "targetPath", filePath)
+	vp.logger.InfoContext(ctx, "Successfully wrote addon defaults", "targetPath", targetPath)
 	return nil
 }
 
 func (vp *VariableProcessor) syncAddonVariables(ctx context.Context, moduleName string, varFile *hclwrite.File) error {
-	filePath := fmt.Sprintf(targetVariableFilePattern, moduleName)
-
 	file := hclwrite.NewEmptyFile()
-
 	for _, block := range varFile.Body().Blocks() {
 		labels := block.Labels()
 
@@ -302,22 +308,23 @@ func (vp *VariableProcessor) syncAddonVariables(ctx context.Context, moduleName 
 	}
 
 	var buf bytes.Buffer
-	execErr := vp.tmpl.Execute(&buf, &struct {
+	err := vp.tmpl.Execute(&buf, &struct {
 		Variables []byte
 	}{
 		Variables: file.Bytes(),
 	})
-	if execErr != nil {
-		vp.logger.ErrorContext(ctx, "Failed to execute template", "path", filePath, "error", execErr)
-		return fmt.Errorf("failed to execute template for file %q: %w", filePath, execErr)
+	if err != nil {
+		vp.logger.ErrorContext(ctx, "Failed to execute template", "moduleName", moduleName, "error", err)
+		return fmt.Errorf("failed to execute template for module %q: %w", moduleName, err)
 	}
 
-	writeErr := os.WriteFile(filePath, buf.Bytes(), targetFileMode)
-	if writeErr != nil {
-		vp.logger.ErrorContext(ctx, "Failed to write file", "path", filePath, "error", writeErr)
-		return fmt.Errorf("failed to write file %q: %w", filePath, writeErr)
+	targetPath := filepath.Join(vp.targetDir, fmt.Sprintf(targetVariableFilePattern, moduleName))
+	err = os.WriteFile(targetPath, buf.Bytes(), targetFileMode)
+	if err != nil {
+		vp.logger.ErrorContext(ctx, "Failed to write file", "path", targetPath, "error", err)
+		return fmt.Errorf("failed to write file %q: %w", targetPath, err)
 	}
 
-	vp.logger.InfoContext(ctx, "Successfully wrote addon variables", "targetPath", filePath)
+	vp.logger.InfoContext(ctx, "Successfully wrote addon variables", "targetPath", targetPath)
 	return nil
 }

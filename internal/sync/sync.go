@@ -294,6 +294,7 @@ func (vp *VariableProcessor) syncAddonVariables(ctx context.Context, moduleName 
 		// Set default to null
 		block.Body().SetAttributeValue("default", cty.NullVal(cty.String))
 
+		file.Body().AppendNewline()
 		file.Body().AppendBlock(block)
 	}
 

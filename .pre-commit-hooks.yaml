@@ -1,0 +1,7 @@
+- id: sync
+  name: Luactl sync
+  description: Runs luactl sync command
+  entry: luactl sync
+  language: golang
+  pass_filenames: false
+  always_run: true

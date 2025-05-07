@@ -183,10 +183,13 @@ func (vp *VariableProcessor) syncAddonDefaults(ctx context.Context, moduleName s
 
 	defaults := make(map[string]hclwrite.Tokens)
 	for _, block := range varFile.Body().Blocks() {
-		defaultValue := block.Body().GetAttribute("default")
-		if defaultValue != nil {
-			name := block.Labels()[0]
-			defaults[name] = defaultValue.Expr().BuildTokens(nil)
+		name := block.Labels()[0]
+
+		defaultAttribute := block.Body().GetAttribute("default")
+		if defaultAttribute != nil {
+			defaults[name] = defaultAttribute.Expr().BuildTokens(nil)
+		} else {
+			defaults[name] = hclwrite.TokensForValue(cty.NullVal(cty.String))
 		}
 	}
 

@@ -195,7 +195,13 @@ func (vp *VariableProcessor) syncAddonDefaults(ctx context.Context, moduleName s
 
 		defaultAttribute := block.Body().GetAttribute("default")
 		if defaultAttribute != nil {
-			defaults[name] = defaultAttribute.Expr().BuildTokens(nil)
+			defaultValue := strings.TrimSpace(string(defaultAttribute.Expr().BuildTokens(nil).Bytes()))
+
+			if defaultValue == "{}" {
+				defaults[name] = hclwrite.TokensForFunctionCall("tomap", defaultAttribute.Expr().BuildTokens(nil))
+			} else {
+				defaults[name] = defaultAttribute.Expr().BuildTokens(nil)
+			}
 		} else {
 			defaults[name] = hclwrite.TokensForValue(cty.NullVal(cty.String))
 		}

@@ -18,8 +18,6 @@ func TestProcessModules(t *testing.T) {
 	require.NoError(t, os.MkdirAll(targetDir, 0755))
 
 	// Read the expected output files
-	expectedAddonContent, err := os.ReadFile(filepath.Join("tests", "fixture", "addon.tf"))
-	require.NoError(t, err)
 	expectedVariablesContent, err := os.ReadFile(filepath.Join("tests", "fixture", "variables-addon.tf"))
 	require.NoError(t, err)
 
@@ -36,18 +34,11 @@ func TestProcessModules(t *testing.T) {
 	err = processor.ProcessModules(t.Context())
 	require.NoError(t, err)
 
-	// Check that the output files were created correctly
-	actualAddonPath := filepath.Join(targetDir, "addon.tf")
-	actualAddon, err := os.ReadFile(actualAddonPath)
-	require.NoError(t, err)
-
 	actualVariablesPath := filepath.Join(targetDir, "variables-addon.tf")
 	actualVariables, err := os.ReadFile(actualVariablesPath)
 	require.NoError(t, err)
 
 	// Compare the generated files with expected fixtures
-	assert.Equal(t, string(expectedAddonContent), string(actualAddon),
-		"Generated addon.tf doesn't match expected content")
 	assert.Equal(t, string(expectedVariablesContent), string(actualVariables),
 		"Generated variables-addon.tf doesn't match expected content")
 }

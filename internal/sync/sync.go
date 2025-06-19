@@ -14,7 +14,6 @@ import (
 	"text/template"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -129,11 +128,6 @@ func (vp *VariableProcessor) processModule(ctx context.Context, moduleName strin
 		return fmt.Errorf("failed to parse variables: %w", err)
 	}
 
-	syncErr := vp.syncAddonDefaults(ctx, moduleName, file)
-	if syncErr != nil {
-		return fmt.Errorf("failed to sync addon defaults: %w", syncErr)
-	}
-
 	syncVarErr := vp.syncAddonVariables(ctx, moduleName, file)
 	if syncVarErr != nil {
 		return fmt.Errorf("failed to sync addon variables: %w", syncVarErr)
@@ -171,110 +165,6 @@ func (vp *VariableProcessor) extractVariables(ctx context.Context, filePath stri
 	}
 
 	return varFile, nil
-}
-
-func (vp *VariableProcessor) syncAddonDefaults(ctx context.Context, moduleName string, varFile *hclwrite.File) error {
-	sourcePath := filepath.Join(vp.workDir, fmt.Sprintf(targetAddonFilePattern, moduleName))
-
-	src, err := os.ReadFile(sourcePath)
-	if err != nil {
-		vp.logger.ErrorContext(ctx, "Failed to read file", "path", sourcePath, "error", err)
-		return fmt.Errorf("failed to read file %q: %w", sourcePath, err)
-	}
-
-	file, diags := hclwrite.ParseConfig(src, filepath.Base(sourcePath), hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		diagErr := errors.New(diags.Error())
-		vp.logger.ErrorContext(ctx, "Failed to parse HCL", "path", sourcePath, "error", diagErr)
-		return fmt.Errorf("failed to parse HCL file %q: %w", sourcePath, diagErr)
-	}
-
-	defaults := make(map[string]hclwrite.Tokens)
-	for _, block := range varFile.Body().Blocks() {
-		name := block.Labels()[0]
-
-		defaultAttribute := block.Body().GetAttribute("default")
-		if defaultAttribute != nil {
-			defaultValue := strings.TrimSpace(string(defaultAttribute.Expr().BuildTokens(nil).Bytes()))
-
-			if defaultValue == "{}" {
-				defaults[name] = hclwrite.TokensForFunctionCall("tomap", defaultAttribute.Expr().BuildTokens(nil))
-			} else {
-				defaults[name] = defaultAttribute.Expr().BuildTokens(nil)
-			}
-		} else {
-			defaults[name] = hclwrite.TokensForValue(cty.NullVal(cty.String))
-		}
-	}
-
-	for _, block := range file.Body().Blocks() {
-		if block.Type() != "module" {
-			continue
-		}
-
-		for name, attribute := range block.Body().Attributes() {
-			expr := string(attribute.Expr().BuildTokens(nil).Bytes())
-
-			if strings.Contains(expr, "try") || strings.Contains(expr, "lookup") {
-				tokens := hclwrite.TokensForIdentifier("var")
-				tokens = append(tokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenDot,
-					Bytes: []byte("."),
-				})
-				tokens = append(tokens, hclwrite.TokensForIdentifier(name)...)
-				tokens = append(tokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenNotEqual,
-					Bytes: []byte("!="),
-				})
-				tokens = append(tokens, hclwrite.TokensForIdentifier("null")...)
-				tokens = append(tokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenQuestion,
-					Bytes: []byte("?"),
-				})
-				tokens = append(tokens, hclwrite.TokensForIdentifier("var")...)
-				tokens = append(tokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenDot,
-					Bytes: []byte("."),
-				})
-				tokens = append(tokens, hclwrite.TokensForIdentifier(name)...)
-				tokens = append(tokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenColon,
-					Bytes: []byte(":"),
-				})
-
-				lookupTokens := hclwrite.TokensForIdentifier("local")
-				lookupTokens = append(lookupTokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenDot,
-					Bytes: []byte("."),
-				})
-				lookupTokens = append(lookupTokens, hclwrite.TokensForIdentifier("addon")...)
-				lookupTokens = append(lookupTokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenComma,
-					Bytes: []byte(","),
-				})
-				lookupTokens = append(lookupTokens, hclwrite.TokensForValue(cty.StringVal(name))...)
-				lookupTokens = append(lookupTokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenComma,
-					Bytes: []byte(","),
-				})
-				lookupTokens = append(lookupTokens, hclwrite.TokensForValue(cty.NullVal(cty.String))...)
-
-				tokens = append(tokens, hclwrite.TokensForFunctionCall("lookup", lookupTokens)...)
-
-				block.Body().SetAttributeRaw(name, tokens)
-			}
-		}
-	}
-
-	targetPath := filepath.Join(vp.targetDir, fmt.Sprintf(targetAddonFilePattern, moduleName))
-	writeErr := os.WriteFile(targetPath, file.Bytes(), targetFileMode)
-	if writeErr != nil {
-		vp.logger.ErrorContext(ctx, "Failed to write file", "path", targetPath, "error", writeErr)
-		return fmt.Errorf("failed to write file %q: %w", targetPath, writeErr)
-	}
-
-	vp.logger.InfoContext(ctx, "Successfully wrote addon defaults", "targetPath", targetPath)
-	return nil
 }
 
 func (vp *VariableProcessor) syncAddonVariables(ctx context.Context, moduleName string, varFile *hclwrite.File) error {

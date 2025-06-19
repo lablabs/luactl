@@ -9,25 +9,25 @@ variable "helm_enabled" {
 variable "helm_chart_name" {
   type        = string
   default     = null
-  description = "Helm chart name to be installed. Required if `argo_source_type` is set to `helm`. Defaults to `null`."
+  description = "Helm chart name to be installed. Required if `argo_source_type` is set to `helm`. Defaults to `\"\"`."
 }
 
 variable "helm_chart_version" {
   type        = string
   default     = null
-  description = "Version of the Helm chart. Required if `argo_source_type` is set to `helm`. Defaults to `null`."
+  description = "Version of the Helm chart. Required if `argo_source_type` is set to `helm`. Defaults to `\"\"`."
 }
 
 variable "helm_release_name" {
   type        = string
   default     = null
-  description = "Helm release name. Required if `argo_source_type` is set to `helm`. Defaults to `null`."
+  description = "Helm release name. Required if `argo_source_type` is set to `helm`. Defaults to `\"\"`."
 }
 
 variable "helm_repo_url" {
   type        = string
   default     = null
-  description = "Helm repository. Required if `argo_source_type` is set to `helm`. Defaults to `null`."
+  description = "Helm repository. Required if `argo_source_type` is set to `helm`. Defaults to `\"\"`."
 }
 
 variable "helm_create_namespace" {
@@ -38,8 +38,8 @@ variable "helm_create_namespace" {
 
 variable "namespace" {
   type        = string
-  description = "The Kubernetes Namespace in which the Helm chart will be installed (required)."
   default     = null
+  description = "The Kubernetes Namespace in which the Helm chart will be installed (required)."
 }
 
 variable "settings" {
@@ -57,7 +57,7 @@ variable "values" {
 variable "argo_name" {
   type        = string
   default     = null
-  description = "Name of the ArgoCD Application. Required if `argo_source_type` is set to `kustomize` or `directory`.  If `argo_source_type` is set to `helm`, ArgoCD Application name will equal `helm_release_name`. Defaults to `null`."
+  description = "Name of the ArgoCD Application. Required if `argo_source_type` is set to `kustomize` or `directory`.  If `argo_source_type` is set to `helm`, ArgoCD Application name will equal `helm_release_name`. Defaults to `\"\"`."
 }
 
 variable "argo_namespace" {
@@ -104,37 +104,32 @@ variable "argo_helm_wait_backoff_limit" {
 
 variable "argo_helm_wait_kubectl_version" {
   type        = string
-  default     = null # renovate: datasource=github-releases depName=kubernetes/kubernetes
+  default     = null
   description = "Version of kubectl to use for ArgoCD Application wait job. Defaults to `1.33.0`."
 }
 
 variable "argo_source_type" {
   type        = string
   default     = null
-  description = "Source type for ArgoCD Application. Can be either `helm`, `kustomize`, or `directory`. Defaults to `helm`."
-
-  validation {
-    condition     = contains(["helm", "kustomize", "directory"], coalesce(var.argo_source_type, "helm"))
-    error_message = "Source type must be either `helm`, `kustomize`, or `directory`."
-  }
+  description = "Source type for ArgoCD Application. Can be either `helm`, `kustomize`, `directory` or `helm-directory`. Defaults to `helm`."
 }
 
 variable "argo_source_repo_url" {
   type        = string
   default     = null
-  description = "ArgoCD Application source repo URL. Required if `argo_source_type` is set to `kustomize` or `directory`. Defaults to `null`."
+  description = "ArgoCD Application source repo URL. Required if `argo_source_type` is set to `kustomize` or `directory`. Defaults to `\"\"`."
 }
 
 variable "argo_source_target_revision" {
   type        = string
   default     = null
-  description = "ArgoCD Application source target revision. Required if `argo_source_type` is set to `kustomize` or `directory`. Defaults to `null`."
+  description = "ArgoCD Application source target revision. Required if `argo_source_type` is set to `kustomize` or `directory`. Defaults to `\"\"`."
 }
 
 variable "argo_source_path" {
   type        = string
   default     = null
-  description = "ArgoCD Application source path. Required if `argo_source_type` is set to `kustomize` or `directory`. Defaults to `null`."
+  description = "ArgoCD Application source path. Required if `argo_source_type` is set to `kustomize` or `directory`. Defaults to `\"\"`."
 }
 
 variable "argo_destination_server" {
@@ -152,7 +147,7 @@ variable "argo_project" {
 variable "argo_info" {
   type        = list(any)
   default     = null
-  description = "ArgoCD Application manifest info parameter. Defaults to `[{ name = terraform, value = true }]`."
+  description = "ArgoCD Application manifest info parameter. Defaults to `[{ name = \"terraform\", value = \"true\" }]`."
 }
 
 variable "argo_sync_policy" {
@@ -164,7 +159,7 @@ variable "argo_sync_policy" {
 variable "argo_metadata" {
   type        = any
   default     = null
-  description = "ArgoCD Application metadata configuration. Override or create additional metadata parameters. Defaults to `{ finalizers = [resources-finalizer.argocd.argoproj.io] }`."
+  description = "ArgoCD Application metadata configuration. Override or create additional metadata parameters. Defaults to `{ finalizers = [\"resources-finalizer.argocd.argoproj.io\"] }`."
 }
 
 variable "argo_apiversion" {
@@ -176,7 +171,13 @@ variable "argo_apiversion" {
 variable "argo_spec" {
   type        = any
   default     = null
-  description = "ArgoCD Application spec configuration. Override or create additional spec parameters. Defaults to `{}`."
+  description = "ArgoCD Application spec configuration. Configuration is extended by deep merging with the default spec parameters. Defaults to `{}`."
+}
+
+variable "argo_spec_override" {
+  type        = any
+  default     = null
+  description = "ArgoCD Application spec configuration. Configuration is overriden by merging natively with the default spec parameters. Defaults to `{}`."
 }
 
 variable "argo_operation" {
@@ -194,7 +195,7 @@ variable "argo_helm_values" {
 variable "argo_kubernetes_manifest_computed_fields" {
   type        = list(string)
   default     = null
-  description = "List of paths of fields to be handled as \\computed\\. The user-configured value for the field will be overridden by any different value returned by the API after apply. Defaults to `[metadata.labels, metadata.annotations, metadata.finalizers]`."
+  description = "List of paths of fields to be handled as `computed`. The user-configured value for the field will be overridden by any different value returned by the API after apply. Defaults to `[\"metadata.labels\", \"metadata.annotations\", \"metadata.finalizers\"]`."
 }
 
 variable "argo_kubernetes_manifest_field_manager_name" {

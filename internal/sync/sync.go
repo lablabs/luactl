@@ -257,7 +257,7 @@ func (vp *VariableProcessor) syncAddonDefaults(ctx context.Context, moduleName s
 					Type:  hclsyntax.TokenComma,
 					Bytes: []byte(","),
 				})
-				lookupTokens = append(lookupTokens, defaults[name]...)
+				lookupTokens = append(lookupTokens, hclwrite.TokensForValue(cty.NullVal(cty.String))...)
 
 				tokens = append(tokens, hclwrite.TokensForFunctionCall("lookup", lookupTokens)...)
 
@@ -287,30 +287,40 @@ func (vp *VariableProcessor) syncAddonVariables(ctx context.Context, moduleName 
 			continue
 		}
 
+		variable := hclwrite.NewBlock("variable", labels)
+		variable.Body().SetAttributeRaw("type", block.Body().GetAttribute("type").Expr().BuildTokens(nil))
+		variable.Body().SetAttributeRaw("default", hclwrite.TokensForValue(cty.NullVal(cty.String)))
+
 		// Update descriptionAtrribute with default value if both exist
 		if descriptionAtrribute := block.Body().GetAttribute("description"); descriptionAtrribute != nil {
+			descriptionValue := string(descriptionAtrribute.Expr().BuildTokens(nil).Bytes())
+			descriptionValue = strings.TrimSpace(descriptionValue)
+			descriptionValue = strings.Trim(descriptionValue, "\"")
+			descriptionValue = strings.ReplaceAll(descriptionValue, "\"", "")
+
 			if defaultAttribute := block.Body().GetAttribute("default"); defaultAttribute != nil {
 				defaultValue := string(defaultAttribute.Expr().BuildTokens(nil).Bytes())
-				defaultValue = strings.ReplaceAll(defaultValue, "\"", "")
 				defaultValue = strings.TrimSpace(defaultValue)
-				if defaultValue == "" { // If default value is empty, set it to an empty string
+
+				typeAttribute := string(block.Body().GetAttribute("type").Expr().BuildTokens(nil).Bytes())
+				typeAttribute = strings.TrimSpace(typeAttribute)
+				typeAttribute = strings.Trim(typeAttribute, "\"")
+				if typeAttribute == "string" {
+					defaultValue = strings.Trim(defaultValue, "\"")
+				}
+
+				if defaultValue == "" {
 					defaultValue = "\"\""
 				}
 
-				descriptionValue := string(descriptionAtrribute.Expr().BuildTokens(nil).Bytes())
-				descriptionValue = strings.ReplaceAll(descriptionValue, "\"", "")
-				descriptionValue = strings.TrimSpace(descriptionValue)
 				descriptionValue = fmt.Sprintf("%s Defaults to `%s`.", descriptionValue, defaultValue)
-
-				block.Body().SetAttributeValue("description", cty.StringVal(descriptionValue))
 			}
+
+			variable.Body().SetAttributeRaw("description", hclwrite.TokensForValue(cty.StringVal(descriptionValue)))
 		}
 
-		// Set default to null
-		block.Body().SetAttributeValue("default", cty.NullVal(cty.String))
-
 		file.Body().AppendNewline()
-		file.Body().AppendBlock(block)
+		file.Body().AppendBlock(variable)
 	}
 
 	var buf bytes.Buffer

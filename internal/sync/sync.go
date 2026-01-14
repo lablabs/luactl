@@ -24,7 +24,6 @@ const (
 
 	sourceVariableFileName = "variables.tf"
 
-	targetAddonFilePattern    = "%s.tf"
 	targetVariableFilePattern = "variables-%s.tf"
 	targetFileMode            = 0600
 )
@@ -41,7 +40,7 @@ type VariableProcessor struct {
 // NewVariableProcessor creates a new processor.
 func NewVariableProcessor(logger *slog.Logger, workDir, targetDir, modulesDir string) (*VariableProcessor, error) {
 	tmpl, err := template.New("variables").Parse(
-		`# IMPORTANT: This file is synced with the "terraform-aws-eks-universal-addon" module. Any changes to this file might be overwritten upon the next release of that module.
+		`# IMPORTANT: This file is synced with the "terraform-aws-eks-universal-addon" template. Any changes to this file might be overwritten upon the next release of the template.
 {{ printf "%s" .Variables }}`)
 	if err != nil {
 		logger.Error("Failed to create template", "error", err)

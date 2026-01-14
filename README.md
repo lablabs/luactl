@@ -1,6 +1,6 @@
 # luactl
 
-A command-line tool for managing [terraform-aws-eks-universal-addon](https://github.com/lablabs/terraform-aws-eks-universal-addon) Terraform module.
+A command-line tool for managing [terraform-aws-eks-universal-addon](https://github.com/lablabs/terraform-aws-eks-universal-addon) Terraform template.
 
 ## Overview
 
